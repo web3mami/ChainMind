@@ -1,0 +1,24 @@
+# LINE ENDINGS ARE NORMALISED TO LF IN THE REPOSITORY, ALWAYS.
+#
+# Without this file, a Windows checkout with core.autocrlf=true can commit CRLF,
+# and this fork and its upstream drifted apart exactly that way: `git diff` on
+# lib/ask-loop.js reported 1,674 lines changed while `--ignore-cr-at-eol`
+# reported none. A merge then produced a 1,675-line conflict in a file whose two
+# sides were byte-identical once whitespace was ignored — noise that hides the
+# real change and makes every sync a manual review.
+#
+# `text=auto` lets git decide what is text; `eol=lf` fixes what it stores. Working
+# copies on Windows still check out however core.autocrlf says — this governs the
+# repository, not the desk.
+* text=auto eol=lf
+
+# Binaries git must never touch. A PNG "normalised" as text is a corrupt PNG.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff  binary
+*.woff2 binary
+*.pdf binary
