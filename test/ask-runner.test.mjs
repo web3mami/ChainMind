@@ -761,6 +761,36 @@ test("the missing-information guidance never speaks in the vocabulary of the plu
   assert.match(MISSING_INFO_GUIDANCE, /offer/i);
 });
 
+test("the prompt names profit and loss as a missing capability, never as a failed read", () => {
+  // MEASURED, and the reason this rule exists: asked for a wallet's PnL, the answer
+  // was "I could not read the wallet's transaction history for every token it holds,
+  // so whether it is in profit is unknown." Nothing had failed — that history reads
+  // in one call. There is no PnL tool, so a gap in the CATALOGUE was reported as a
+  // gap in the DATA, which sends the reader off to retry working code forever.
+  assert.match(SYSTEM_PROMPT, /PROFIT AND LOSS IS wallet_pnl/);
+  assert.match(SYSTEM_PROMPT, /cost basis/i);
+  // The distinction itself has to be stated, not merely implied by the example.
+  assert.match(SYSTEM_PROMPT, /A limit on what is COMPUTED is never reported as a failure of what was FETCHED/);
+  // The two numbers that must never be invented to fill a withheld one.
+  assert.match(SYSTEM_PROMPT, /NOT A LOWER BOUND AND MUST NEVER BE REPORTED AS "AT LEAST"/);
+  assert.match(SYSTEM_PROMPT, /HAS NO COST, WHICH IS NOT A COST OF ZERO/);
+  // The three-way split lives in the shared guidance, so every gap goes through it
+  // and not just this one.
+  assert.match(MISSING_INFO_GUIDANCE, /THREE KINDS OF GAP/);
+  assert.match(MISSING_INFO_GUIDANCE, /nothing here computes that at all/i);
+});
+
+test("the prompt does not offer a clarification option that nothing can answer", () => {
+  // A clarification's option label is sent back VERBATIM as the next question, so an
+  // option is a promise the question on it is answerable. "the address most in
+  // profit" shipped as the canonical third reading in the prompt, in the tool
+  // description and in the docs — pressing it asked for cost basis, which nothing
+  // computes, so the reader spent a turn discovering the button was a dead end.
+  assert.doesNotMatch(SYSTEM_PROMPT, /the address most in profit are three different questions/);
+  assert.match(SYSTEM_PROMPT, /taken the most out of it are three different questions/);
+  assert.match(SYSTEM_PROMPT, /EVERY OPTION YOU OFFER MUST BE ONE YOU CAN ACTUALLY ANSWER/);
+});
+
 test("the prompt makes a pool-derived price distinguishable from a quoted one", () => {
   // A price computed off a Uniswap v3 pool and a price published by a feed are
   // different measurements of different things. The reader has to be able to tell

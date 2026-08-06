@@ -121,7 +121,7 @@ test("TOOL_NAMES matches the catalogue exactly and is frozen", () => {
   assert.ok(Object.isFrozen(TOOL_SCHEMAS));
 });
 
-test("the catalogue covers all twenty-six documented tools", () => {
+test("the catalogue covers all twenty-seven documented tools", () => {
   // Seven that answer a whole question, seven that go deeper into one token, two
   // that span TOKENS (holder_overlap, co_holdings — the relation the app was
   // missing when it answered a two-token question about one token), five on the
@@ -129,7 +129,10 @@ test("the catalogue covers all twenty-six documented tools", () => {
   // picture for a project (project_profile), THREE that read SWAPS rather than
   // transfers (recent_trades, real_volume, swap_detail — the first lookups here
   // that can say somebody BOUGHT or SOLD rather than that something moved), and
-  // one that looks nothing up at all.
+  // one that computes a POSITION rather than a movement (wallet_pnl, the only
+  // tool here that answers "is this wallet up or down" — and the only one that
+  // routinely withholds its own figure, because a cost basis that cannot be
+  // proven is worse than none), and one that looks nothing up at all.
   assert.deepEqual([...TOOL_NAMES].sort(), [
     "ask_clarification",
     "bundle_check",
@@ -155,6 +158,7 @@ test("the catalogue covers all twenty-six documented tools", () => {
     "top_movers",
     "trace_wallet",
     "wallet_counterparties",
+    "wallet_pnl",
     "wallet_portfolio",
     "whale_moves",
   ]);
@@ -532,7 +536,7 @@ test("dispatchTool answers ask_clarification without touching the chain", async 
       options: [
         { label: "Who holds the most of it?", hint: "the ranked holder list" },
         { label: "Who deployed it?", hint: "the minting address" },
-        { label: "Who is most in profit?", hint: "realised gains by address" },
+        { label: "Who has taken the most out?", hint: "the largest recent sells" },
       ],
     },
     impls,
@@ -545,7 +549,7 @@ test("dispatchTool answers ask_clarification without touching the chain", async 
       options: [
         { label: "Who holds the most of it?", hint: "the ranked holder list" },
         { label: "Who deployed it?", hint: "the minting address" },
-        { label: "Who is most in profit?", hint: "realised gains by address" },
+        { label: "Who has taken the most out?", hint: "the largest recent sells" },
       ],
     },
   });

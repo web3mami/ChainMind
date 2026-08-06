@@ -11,6 +11,7 @@ import {
   consumeQuestion,
   freeDailyAllowance,
   msUntilUtcReset,
+  openAccess,
   peekQuota,
   quotaKey,
   quotaMessage,
@@ -21,6 +22,12 @@ import { gateWorstCaseMs, publicQuota, quotaHeaders, resolveAccess } from "../li
 import { PLATFORM_MARGIN_MS } from "../lib/request-budget.js";
 import { createMemoryStore, withStoreDeadline } from "../lib/store.js";
 import { createSessionCookie, signPayload } from "../lib/session.js";
+
+// Almost every test in this file asserts on COUNTING, which the open-access switch turns
+// off wholesale. Left set in a developer's shell it would fail twenty-odd tests at once
+// with "expected 2, got null" and nothing pointing at the cause; the tests that do want
+// it set it themselves through withEnv.
+delete process.env.OPEN_ACCESS;
 
 const SECRET = "test-secret-that-is-long-enough-to-be-allowed";
 const ADDRESS = "0xA5aAb3F0c6EeadF30Ef1D3Eb997108E976351feB";
@@ -462,4 +469,94 @@ test("with a gate configured, the denial still says what to hold", () => {
   const line = quotaMessage(quota, { state: "below", thresholdTokens: "1,000", symbol: "CMIND" });
   assert.match(line, /1,000 CMIND/);
   assert.match(line, /without a daily limit/i);
+});
+
+/* ------------------------------- open access ------------------------------ */
+
+test("OPEN_ACCESS is read as a switch, and is off unless it is deliberately on", async () => {
+  await withEnv({ OPEN_ACCESS: null }, () => assert.equal(openAccess(), false));
+  await withEnv({ OPEN_ACCESS: "" }, () => assert.equal(openAccess(), false));
+  await withEnv({ OPEN_ACCESS: "1" }, () => assert.equal(openAccess(), true));
+  await withEnv({ OPEN_ACCESS: "true" }, () => assert.equal(openAccess(), true));
+  await withEnv({ OPEN_ACCESS: "ON" }, () => assert.equal(openAccess(), true, "the switch is case-insensitive"));
+  await withEnv({ OPEN_ACCESS: " yes " }, () => assert.equal(openAccess(), true, "a value with whitespace still counts"));
+  // The one that matters: anything unrecognised leaves the limit ON. A typo in a
+  // dashboard variable must not silently uncap the product.
+  await withEnv({ OPEN_ACCESS: "0" }, () => assert.equal(openAccess(), false));
+  await withEnv({ OPEN_ACCESS: "false" }, () => assert.equal(openAccess(), false));
+  await withEnv({ OPEN_ACCESS: "banana" }, () => assert.equal(openAccess(), false));
+});
+
+test("open access lets an anonymous visitor ask without counting anything", async () => {
+  await withEnv({ OPEN_ACCESS: "1", FREE_DAILY_QUESTIONS: "5" }, async () => {
+    // Same proof the holder path uses: a store that throws if it is touched at all.
+    const store = {
+      async increment() {
+        throw new Error("open access must not touch the store");
+      },
+      async counter() {
+        throw new Error("open access must not touch the store");
+      },
+    };
+    const args = { store, address: null, entitlement: null, ip: freshIp() };
+
+    // Well past the configured allowance of 5.
+    for (let i = 0; i < 12; i += 1) {
+      const res = await consumeQuestion(args);
+      assert.equal(res.allowed, true, `question ${i + 1} was refused under open access`);
+      assert.equal(res.unlimited, true);
+    }
+
+    const res = await consumeQuestion(args);
+    assert.equal(res.limit, null, "a lifted limit has no number, and 0 would read as exhausted");
+    assert.equal(res.remaining, null);
+    assert.equal(quotaHeaders(res)["x-quota-limit"], "unlimited");
+    assert.equal(quotaMessage(res, null), "", "open access must not print a limit sentence");
+  });
+});
+
+test("open access does not tell an anonymous visitor they are a verified holder", async () => {
+  await withEnv({ OPEN_ACCESS: "1" }, async () => {
+    const store = createMemoryStore();
+    const open = await consumeQuestion({ store, address: null, entitlement: null, ip: freshIp() });
+    assert.equal(open.state, QUOTA_STATE.OPEN);
+    assert.notEqual(open.state, QUOTA_STATE.UNLIMITED, "unverified visitors were reported as holders");
+
+    // And the holder keeps their own state — the switch lifts the limit for everyone,
+    // it does not overwrite who was entitled on their own merits.
+    const holder = await consumeQuestion({ store, address: ADDRESS, entitlement: entitled, ip: freshIp() });
+    assert.equal(holder.state, QUOTA_STATE.UNLIMITED);
+  });
+});
+
+test("both quota readers agree under open access", async () => {
+  await withEnv({ OPEN_ACCESS: "1" }, async () => {
+    const store = createMemoryStore();
+    const args = { store, address: null, entitlement: null, ip: freshIp() };
+    const spent = await consumeQuestion(args);
+    const peeked = await peekQuota(args);
+    // A UI counter that disagrees with the API's enforcement is the bug this pins:
+    // the panel would draw "0 of 5 left" over an endpoint that is letting everyone in.
+    assert.deepEqual(
+      { u: peeked.unlimited, s: peeked.state, l: peeked.limit, r: peeked.remaining },
+      { u: spent.unlimited, s: spent.state, l: spent.limit, r: spent.remaining },
+    );
+    assert.equal(peeked.degraded, false, "open access is not a store outage and must not be reported as one");
+  });
+});
+
+test("an allowance of zero is still a paywall — it is not a way to remove the limit", async () => {
+  // The inversion the separate switch exists to prevent. Anyone reaching for
+  // "set the limit to 0 to turn it off" gets the opposite, so it is pinned here.
+  await withEnv({ FREE_DAILY_QUESTIONS: "0", OPEN_ACCESS: null }, async () => {
+    const res = await consumeQuestion({ store: createMemoryStore(), address: null, entitlement: null, ip: freshIp() });
+    assert.equal(res.allowed, false, "zero locked nobody out, so it is no longer a paywall");
+    assert.equal(res.unlimited, false);
+  });
+  // And with the switch on, that same zero is overridden rather than obeyed.
+  await withEnv({ FREE_DAILY_QUESTIONS: "0", OPEN_ACCESS: "1" }, async () => {
+    const res = await consumeQuestion({ store: createMemoryStore(), address: null, entitlement: null, ip: freshIp() });
+    assert.equal(res.allowed, true, "open access did not win over a configured paywall");
+    assert.equal(res.state, QUOTA_STATE.OPEN);
+  });
 });

@@ -853,6 +853,32 @@ export const CORPUS = Object.freeze([
     why: "One wallet and one token, and only trace_wallet carries hasSold.",
   },
   {
+    id: "pnl-1",
+    q: `is ${WALLET} in profit on nvda`,
+    primary: "wallet_pnl",
+    accept: [["wallet_pnl"]],
+    source: "tool",
+    why: "Profit needs a cost basis, and wallet_pnl is the only tool that computes one.",
+  },
+  {
+    id: "pnl-2",
+    q: `whats the pnl for ${WALLET_B} on tsla`,
+    primary: "wallet_pnl",
+    accept: [["wallet_pnl"]],
+    source: "live",
+    why: "The live phrasing that produced an invented \"could not read the history\" excuse before this tool existed.",
+  },
+  {
+    id: "pnl-3",
+    q: `how much has ${WALLET} made on nvda`,
+    primary: "wallet_pnl",
+    // trace_wallet is defensible: it names the same two subjects and answers what
+    // the wallet DID, which is the honest neighbour when no basis can be proven.
+    accept: [["wallet_pnl"], ["trace_wallet"]],
+    source: "tool",
+    why: "Made-money phrasing is wallet_pnl; trace_wallet reads the same two subjects and is the nearest honest answer.",
+  },
+  {
     id: "trace-2",
     q: `when did ${WALLET_B} start buying tsla`,
     primary: "trace_wallet",

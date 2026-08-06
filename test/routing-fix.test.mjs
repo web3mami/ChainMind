@@ -29,6 +29,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   CHAIN_NOT_READ_NOTE,
+  PNL_SCOPE_NOTE,
   ROUTING_TEMPERATURE,
   fastPathRoute,
   floorToolCalls,
@@ -444,6 +445,85 @@ test("a budget-starved question that names nothing on chain is untouched", async
 
   assert.equal(res.chainNotRead, undefined);
   assert.ok(!payloads[0].messages.some((m) => m.content === CHAIN_NOT_READ_NOTE));
+});
+
+/* ---------------------------- profit and loss ---------------------------- */
+
+test("a question about profit carries the note that says nothing computes it", async () => {
+  // MEASURED TWICE. First the invented outage: "I could not read the wallet's
+  // transaction history for every token it holds, so whether it is in profit is
+  // unknown" — a failure that never happened, on a history that reads in one call.
+  // Then, with the rule added to SYSTEM_PROMPT and nothing else, a live run
+  // answered a DIFFERENT question instead: "This wallet holds 50.28 MEMECAT and 30
+  // catcall…", every figure true, profit never mentioned. One bullet among a
+  // hundred did not survive a wallet full of real data, so the note rides next to
+  // the question the way CHAIN_NOT_READ_NOTE does.
+  const { complete, payloads } = scripted([
+    toolTurn([{ name: "wallet_portfolio", args: { address: ADDRESS } }]),
+    proseTurn("Working out whether this address is up or down is not something I can do."),
+  ]);
+  const { dispatch, calls } = recorder();
+
+  await runToolLoop({ ...base, question: `whats the pnl for ${ADDRESS}`, complete, dispatch });
+
+  const note = payloads[0].messages.find((m) => m.role === "system" && m.content === PNL_SCOPE_NOTE);
+  assert.ok(note, "the note must be present on the FIRST payload, so it shapes routing too");
+  // And the lookups still run. The refusal is about profit, not about the address:
+  // suppressing the wallet read would answer less than before the fix.
+  assert.equal(calls.length, 1, "the wallet is still read");
+  assert.equal(calls[0].name, "wallet_portfolio");
+});
+
+test("the note forbids the invented outage that started all this", () => {
+  // The exact inversion that produced the bug. Anything resembling "could not read"
+  // sends the reader off to retry code that works perfectly, so the note may only
+  // permit that sentence when a read actually failed.
+  assert.match(PNL_SCOPE_NOTE, /Never say a history, a page or a balance could not be read unless that is what actually happened/);
+  assert.match(PNL_SCOPE_NOTE, /a limit of what is computed is not a failure of what was fetched/);
+  // The two figures that must never be invented to fill a withheld one.
+  assert.match(PNL_SCOPE_NOTE, /NOT a lower bound/);
+  assert.match(PNL_SCOPE_NOTE, /never fill the gap with a\s+dollar value/);
+  assert.match(PNL_SCOPE_NOTE, /airdrop is never pure profit/);
+});
+
+test("the note routes a wallet-only question to a question the reader can answer", () => {
+  // A position is always in ONE token, so "whats the pnl for 0x…" cannot be
+  // computed as asked — but refusing it outright was the old behaviour and it is
+  // not the right one now that the figure exists. Asking which token, and naming
+  // what the wallet holds, turns a dead end into one more turn.
+  assert.match(PNL_SCOPE_NOTE, /A POSITION IS ALWAYS IN ONE TOKEN/);
+  assert.match(PNL_SCOPE_NOTE, /do not refuse and do not guess a token/i);
+  assert.match(PNL_SCOPE_NOTE, /naming what the wallet actually holds/);
+});
+
+test("the note tells the model not to recite it, or to name a tool to the reader", () => {
+  // MEASURED, on the first version of this note: the model printed it back
+  // verbatim — "THIS QUESTION ASKS FOR PROFIT, LOSS OR WHAT A POSITION COST, AND
+  // NOTHING HERE COMPUTES THAT." — capitals and all, then closed with "use
+  // wallet_portfolio", handing the reader the name of an internal function. A note
+  // written as a finished sentence gets copied as one, so it now says what to do
+  // rather than what to write.
+  assert.match(PNL_SCOPE_NOTE, /THIS NOTE IS AN INSTRUCTION, NOT A DRAFT/);
+  assert.match(PNL_SCOPE_NOTE, /do not copy a sentence from it/i);
+  assert.match(PNL_SCOPE_NOTE, /Never name a tool, a lookup or a function to the reader/);
+  // The note opens as prose about the reader, not as a headline the model can lift.
+  assert.doesNotMatch(PNL_SCOPE_NOTE.slice(0, 90), /^[A-Z ,]{40,}/);
+});
+
+test("a question that names no profit is left alone", async () => {
+  // The scoping test. "how much is this wallet worth" is answered by
+  // wallet_portfolio and must not pick up a refusal about cost basis.
+  const { complete, payloads } = scripted([
+    toolTurn([{ name: "wallet_portfolio", args: { address: ADDRESS } }]),
+    proseTurn("It holds 50.28 MEMECAT."),
+  ]);
+  await runToolLoop({
+    ...base,
+    question: `how much is ${ADDRESS} worth`,
+    complete,
+    dispatch: recorder().dispatch,
+  });
+  assert.ok(!payloads[0].messages.some((m) => m.content === PNL_SCOPE_NOTE));
 });
 
 /* ------------- the fast path must not swallow another script ------------- */

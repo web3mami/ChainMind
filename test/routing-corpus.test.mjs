@@ -76,7 +76,7 @@ test("a row that admits more than one answer says why — an unexplained set is 
   }
 });
 
-test("all 26 tools are reachable from the corpus — an unreached tool is an unmeasured tool", () => {
+test("all 27 tools are reachable from the corpus — an unreached tool is an unmeasured tool", () => {
   const covered = coveredTools();
   const missing = TOOL_NAMES.filter((name) => !covered.has(name));
   assert.deepEqual(missing, [], `no corpus row can route to: ${missing.join(", ")}`);

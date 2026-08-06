@@ -189,6 +189,11 @@ const NOT_DOING = [
     body: "Figures are current. There is no series to plot, no “price 30 days ago”, and no backtest.",
   },
   {
+    kind: "Choice",
+    title: "Profit and loss only when it can be proven",
+    body: "Profit is worked out for one wallet in one token, in ETH, from the trades themselves — a swap prices itself, so no price feed is involved. It is realised profit on closed trades, before gas; unrealised gains on a position still open are not computed. And the figure is withheld outright whenever it cannot be proven: a history longer than could be read, or tokens that arrived with no purchase to price. A truncated history is not reported as “at least”, because the part not read holds purchases and sales both. An airdrop has no cost rather than a cost of zero, so free tokens are never reported as pure profit. You always get the trades; you get the total only when it is real.",
+  },
+  {
     kind: "Gap",
     title: "No mempool",
     body: "This reads settled blocks on a sequencer-ordered L2. A transaction appearing earlier in a block proves it was ordered earlier and nothing about whether anyone saw another transaction — so ordering is reported as ordering, and never as front-running or sandwiching.",
@@ -437,7 +442,7 @@ export default function DocsPage() {
                 <h3 className="text-sm font-semibold text-cm-text">When a question has two readings, it asks you back</h3>
                 <p className="mt-2 text-sm leading-relaxed text-cm-muted">
                   &ldquo;Who is the main benefactor of this coin&rdquo; can mean the largest holder, the deployer who
-                  minted it, or the address most in profit. Rather than silently picking one, ChainMind returns one short
+                  minted it, or the address that has taken the most out. Rather than silently picking one, ChainMind returns one short
                   question and two to four pressable options, worded in your own voice and your own language. It will not
                   do this when a sensible default exists, when both readings are cheap to answer, over spelling or
                   phrasing, or twice in a row.

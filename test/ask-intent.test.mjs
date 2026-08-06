@@ -7,7 +7,14 @@
 // Run with: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { INTENTS, classifyIntent, extractTargets, isOffChainKnowledge, parseRankQuery } from "../lib/ask-intent.js";
+import {
+  INTENTS,
+  asksForCostBasis,
+  classifyIntent,
+  extractTargets,
+  isOffChainKnowledge,
+  parseRankQuery,
+} from "../lib/ask-intent.js";
 
 const TX = `0x${"a".repeat(64)}`;
 const ADDR = `0x${"b".repeat(40)}`;
@@ -296,4 +303,66 @@ test("parseRankQuery combines metric, direction and count", () => {
     direction: "asc",
     limit: 5,
   });
+});
+
+/* ------------------------------ cost basis ------------------------------ */
+
+test("a question about profit or what a position cost is recognised", () => {
+  // MEASURED: asked for a wallet's PnL, the answer was "I could not read the
+  // wallet's transaction history for every token it holds, so whether it is in
+  // profit is unknown." That history reads in one call and nothing had failed —
+  // there is simply no cost-basis lookup. Detecting the question is what lets the
+  // answer say that, instead of inventing an outage the reader will retry.
+  for (const q of [
+    "whats the pnl for 0xabc in the last 7 days",
+    "is this wallet in profit",
+    "P&L please",
+    "what is my cost basis on nvda",
+    "whats my entry price",
+    "is 0xabc up or down on catcall",
+    "how much has this wallet made",
+    "did they make any money",
+    "are they losing money",
+    "am i in the green",
+    "whats the roi on this",
+    "unrealized gains for this address",
+    "is he break even yet",
+  ]) {
+    assert.equal(asksForCostBasis(q), true, `"${q}" asks what a position cost`);
+  }
+});
+
+test("asking what a wallet holds or whether it sold is NOT a cost-basis question", () => {
+  // The rule that matters. wallet_portfolio, trace_wallet, recent_trades and
+  // whale_moves all answer real questions that sit next to profit, and a detector
+  // that swallowed them would trade one bad answer for four missing ones — a worse
+  // product than the defect it was meant to fix. Value held is not profit.
+  for (const q of [
+    "how much is this wallet worth",
+    "what does 0xabc hold",
+    "has this wallet ever sold nvda",
+    "whats its net position",
+    "who holds the most nvda",
+    "who is dumping",
+    "show me recent trades",
+    "is the volume real",
+    "whats the price of tsla",
+    "how many holders does it have",
+    "is this a larp",
+    "hows nvda doin",
+  ]) {
+    assert.equal(asksForCostBasis(q), false, `"${q}" is answerable and must not be diverted`);
+  }
+});
+
+test("the cost-basis check is total", () => {
+  for (const bad of [null, undefined, 42, {}, [], "", "   "]) {
+    assert.equal(asksForCostBasis(bad), false);
+  }
+  // Regex state must not carry between calls — every pattern here is /g, and a
+  // shared lastIndex is the classic way a detector answers differently the second
+  // time it is asked the same question.
+  assert.equal(asksForCostBasis("is this wallet in profit"), true);
+  assert.equal(asksForCostBasis("is this wallet in profit"), true);
+  assert.equal(asksForCostBasis("is this wallet in profit"), true);
 });

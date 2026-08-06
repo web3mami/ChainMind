@@ -45,6 +45,10 @@ function short(address) {
 /** The dot beside the status line. Colour carries the same meaning as the words. */
 function stateDot(state) {
   if (state === "unlimited") return "bg-cm-ok";
+  // Open access has no limit either, so it gets the same colour as the holder. Left on
+  // the default it drew a grey "restricted" dot next to a panel saying there was no
+  // limit, and the dot is what a glance actually reads.
+  if (state === "open-access") return "bg-cm-ok";
   if (state === "unverified") return "bg-cm-warn";
   return "bg-cm-faint";
 }
@@ -284,11 +288,16 @@ export default function WalletMenu() {
   const remaining = quota?.remaining;
   const limit = quota?.limit;
 
+  // Unlimited BECAUSE THIS SERVER IS NOT COUNTING, which is not a fact about the visitor.
+  // Everything below has to tell the two apart: the holder earned it, the open-access
+  // visitor merely arrived during the window.
+  const openAccess = state === "open-access";
+
   const label = loading
     ? "…"
     : signedIn
       ? short(address)
-      : unlimited
+      : unlimited && !openAccess
         ? "Connected"
         : remaining != null && limit
           ? `Connect · ${remaining}/${limit}`
@@ -323,7 +332,18 @@ export default function WalletMenu() {
 
           {/* Standing: which tier, and the number when there is one. */}
           <div className="mt-3 rounded-md border border-cm-border-subtle bg-cm-surface px-3 py-2.5">
-            {unlimited ? (
+            {openAccess ? (
+              // NOT the holder line. This visitor may hold nothing and may not even have a
+              // wallet connected; "verified holder" would be a claim about them that nobody
+              // checked, and one they would watch evaporate the moment the switch comes off.
+              <>
+                <p className="font-mono text-[12px] text-cm-ok">No daily limit right now</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-cm-muted">
+                  Questions are not being counted while ChainMind is open for public testing.
+                  {signedIn ? "" : " Connecting a wallet saves your history."}
+                </p>
+              </>
+            ) : unlimited ? (
               <p className="font-mono text-[12px] text-cm-ok">
                 Unlimited questions — verified holder
                 {entitlement?.balance ? ` (${entitlement.balance} ${entitlement.symbol ?? ""})`.trimEnd() : ""}
