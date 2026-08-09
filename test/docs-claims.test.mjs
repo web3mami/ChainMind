@@ -56,6 +56,12 @@ const MEASURED_BY = Object.freeze({
   "whats moving": "movers-3",
   "whats good today": "market-4",
   "que es nvda": "token-3",
+  // Following the money
+  "where did the funds go from 0xabc…": "flows-1",
+  "my wallet was drained, show me the last transfers out": "flows-2",
+  "who did this address send to": "flows-3",
+  "a donde fueron los fondos": "flows-4",
+  "trace the nvda that left 0xabc…": "trace-funds-1",
   // Holders & distribution
   "who holds nvda": "holders-1",
   "is this concentrated": "holders-2",

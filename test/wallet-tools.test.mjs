@@ -49,6 +49,7 @@ import {
   traceRows,
   traceWallet,
   walletCounterparties,
+  walletFlows,
   walletPortfolio,
 } from "../lib/wallet-evidence.js";
 import { whaleMoves } from "../lib/token-evidence.js";
@@ -908,4 +909,125 @@ test("the shared comparator keeps unknowns last in BOTH directions", () => {
   // The one that matters: "smallest first" must not put the unpriced row first.
   assert.deepEqual([...rows].sort(compareByField("v", "asc")).map((r) => r.symbol), ["A", "C", "B"]);
   assert.deepEqual([...rows].sort(compareByField("nope", "desc")).map((r) => r.symbol), ["A", "B", "C"], "all unknown ties break on symbol");
+});
+
+/* ============================== value flows ============================== */
+
+/** One cross-token transfer row in the indexer's shape. */
+function xfer(from, to, { symbol = "AAA", token = "0xtoken", value = "1000000000000000000", time = "2026-08-01T00:00:00Z", hash = "0xtx" } = {}) {
+  return {
+    from: { hash: from },
+    to: { hash: to },
+    token: { address_hash: token, symbol, decimals: "18" },
+    total: { value, decimals: "18" },
+    timestamp: time,
+    transaction_hash: hash,
+  };
+}
+
+test("wallet_flows counts every transfer read, and lists far fewer", async () => {
+  // The counts and the listing are different sets on purpose: at 200 rows this
+  // result serialised to 71,318 characters against a 24,000 budget, so the model
+  // was handed JSON cut off partway through and invented figures to finish it.
+  const many = Array.from({ length: 60 }, (_, i) => xfer(WALLET(9), SELF, { hash: `0xtx${i}` }));
+  const res = await walletFlows(SELF, {
+    calls: chain({
+      getAddressCounters: () => Promise.resolve({ token_transfers_count: "60", transactions_count: "5" }),
+      getTokenTransfers: () => Promise.resolve({ items: many }),
+      getAddress: () => Promise.resolve({ is_contract: false }),
+      getAddressTransactions: () => Promise.resolve({ items: [] }),
+    }),
+  });
+  assert.equal(res.ok, true);
+  assert.equal(res.evidence.transfersRead, 60, "every transfer read is counted");
+  assert.ok(res.evidence.table.rows.length < 60, "and far fewer are listed");
+  assert.equal(res.evidence.table.totalRows, 60, "the table still says how many there were");
+  assert.match(res.evidence.table.note, /Every count and share above covers all 60/);
+});
+
+test("every amount carries its unit, and a token with no symbol still gets one", async () => {
+  // Measured twice against a live model: a bare "0.0425" in the amount column came
+  // back to the reader as "$0.0425 sent" — a dollar figure this lookup cannot
+  // compute, because it reads no price at all. No path may emit a naked number.
+  const res = await walletFlows(SELF, {
+    calls: chain({
+      getAddressCounters: () => Promise.resolve({ token_transfers_count: "2" }),
+      getTokenTransfers: () =>
+        Promise.resolve({
+          items: [xfer(WALLET(2), SELF, { symbol: "AAA" }), xfer(WALLET(3), SELF, { symbol: null, token: "0xdeadbeef" })],
+        }),
+      getAddress: () => Promise.resolve({ is_contract: false }),
+      getAddressTransactions: () => Promise.resolve({ items: [] }),
+    }),
+  });
+  for (const row of res.evidence.table.rows) {
+    assert.doesNotMatch(String(row.amountDisplay).trim(), /^[\d.,]+$/, `"${row.amountDisplay}" is a bare number`);
+  }
+});
+
+test("a counterparty that was not read is UNPROBED, never ordinary", async () => {
+  // "We did not look" and "we looked and it was unremarkable" are different facts,
+  // and only the second is a finding. A reader deciding which address to chase has
+  // to be able to tell them apart.
+  const items = [];
+  for (let i = 2; i < 12; i += 1) {
+    for (let n = 0; n < 3; n += 1) items.push(xfer(WALLET(i), SELF, { hash: `0xtx${i}-${n}` }));
+  }
+  const res = await walletFlows(SELF, {
+    calls: chain({
+      getAddressCounters: () => Promise.resolve({ token_transfers_count: String(items.length) }),
+      getTokenTransfers: () => Promise.resolve({ items }),
+      getAddress: () => Promise.resolve({ is_contract: true }),
+      getAddressTransactions: () => Promise.resolve({ items: [] }),
+    }),
+  });
+  const probed = res.evidence.counterparties.filter((c) => c.probed);
+  const unprobed = res.evidence.counterparties.filter((c) => !c.probed);
+  assert.ok(probed.length > 0 && unprobed.length > 0, "this fixture must exercise both");
+  for (const c of unprobed) {
+    assert.equal(c.shape, null, "an unprobed counterparty has no shape");
+    assert.equal(c.isContract, null, "and no contract verdict");
+    assert.match(c.detail, /not read in its own right/);
+  }
+});
+
+test("an outbound transfer this wallet did not sign is UNKNOWN unless its own list was complete", async () => {
+  // Close to an accusation, so it runs hasSold's discipline. Somebody else's
+  // signature is also the ordinary case — routers and smart accounts produce it in
+  // most trades — so it is never reported as a stolen approval.
+  const out = [xfer(SELF, WALLET(2), { hash: "0xmoved" })];
+  const partial = await walletFlows(SELF, {
+    calls: chain({
+      getAddressCounters: () => Promise.resolve({ token_transfers_count: "1", transactions_count: "9000" }),
+      getTokenTransfers: () => Promise.resolve({ items: out }),
+      getAddress: () => Promise.resolve({ is_contract: false }),
+      // A page that does not contain the hash, and more upstream.
+      getAddressTransactions: () => Promise.resolve({ items: [{ hash: "0xsomethingelse" }], next_page_params: { x: 1 } }),
+    }),
+  });
+  assert.equal(partial.evidence.outboundSignedByThirdParty, 0, "an incomplete list cannot establish it");
+  assert.equal(partial.evidence.outboundSignerUnknown, 1);
+  assert.match(partial.evidence.signerNotice, /ordinary rather than alarming/);
+  assert.doesNotMatch(partial.evidence.signerNotice, /stolen|approval you granted|drain/i);
+  // And it must actively DENY the claim rather than merely omit it, because the
+  // reader's next move on "your approval is still live" is to go and revoke — and
+  // no allowance is read anywhere here, so asserting it would invent the one part
+  // they would act on.
+  assert.match(partial.evidence.signerNotice, /nothing about whether any approval is still live/);
+});
+
+test("the wallet's own shape is measured, and is null when too little was read", async () => {
+  // The first version shipped the whole shape dictionary and let the model pick,
+  // which narrated a user's own drained wallet as exchange-like with no
+  // measurement behind the choice.
+  const quiet = await walletFlows(SELF, {
+    calls: chain({
+      getAddressCounters: () => Promise.resolve({ token_transfers_count: "2" }),
+      getTokenTransfers: () => Promise.resolve({ items: [xfer(WALLET(2), SELF), xfer(WALLET(3), SELF)] }),
+      getAddress: () => Promise.resolve({ is_contract: false }),
+      getAddressTransactions: () => Promise.resolve({ items: [] }),
+    }),
+  });
+  assert.equal(quiet.evidence.shape, null, "two transfers cannot support a shape");
+  assert.equal(quiet.evidence.shapeReading, null);
 });
