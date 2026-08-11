@@ -38,6 +38,21 @@ export function SiteFooter() {
                 </li>
               </ul>
             </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-cm-faint">Legal</p>
+              <ul className="mt-2 space-y-1.5 text-cm-muted">
+                <li>
+                  <Link href="/privacy" className="hover:text-cm-text">
+                    Privacy
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/terms" className="hover:text-cm-text">
+                    Terms
+                  </Link>
+                </li>
+              </ul>
+            </div>
             <div className="max-w-md">
               <p className="text-xs font-semibold uppercase tracking-wide text-cm-faint">About the answers</p>
               <p className="mt-2 text-xs leading-relaxed text-cm-muted">
