@@ -284,6 +284,7 @@ const ENDPOINT_ROWS = [
   ["POST /api/ask", "The question. Guards, budget, lookups and the streamed answer."],
   ["GET /api/health", "Liveness, plus which stateful features are actually configured."],
   ["GET /api/quota", "What this caller has left today, and why."],
+  ["GET /api/mobile/config", "Remote switches for the iOS app (walletFeatures and friends)."],
   ["POST /api/auth/nonce · /verify", "Issue a single-use challenge; redeem a signature for a session."],
   ["GET /api/auth/session · POST /api/auth/logout", "Read the current session; end it."],
   ["GET · POST · DELETE /api/history", "A signed-in wallet's saved questions. Delete means delete."],
