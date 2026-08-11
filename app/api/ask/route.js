@@ -4,7 +4,7 @@ import { clientIp, isSameOriginRequest, rateLimit } from "@/lib/api-guard.js";
 import { quotaDenial, quotaHeaders, resolveAccess } from "@/lib/ask-access.js";
 import { publicResearchBlock, researchForAsk } from "@/lib/research-job.js";
 import { saveHistoryEntry } from "@/lib/history.js";
-import { SESSION_COOKIE, shortAddress } from "@/lib/session.js";
+import { sessionTokenFromRequest, shortAddress } from "@/lib/session.js";
 import { getStore } from "@/lib/store.js";
 import { recordSearch } from "@/lib/usage.js";
 import { GUIDANCE, runAsk, runAskStream } from "@/lib/ask-runner.js";
@@ -426,7 +426,7 @@ export async function POST(req) {
   // why nothing here is taken from the body — the address comes from the signed
   // cookie and the balance from our own RPC client (see lib/ask-access.js).
   const access = await resolveAccess({
-    sessionCookie: req.cookies.get(SESSION_COOKIE)?.value ?? null,
+    sessionCookie: sessionTokenFromRequest(req),
     ip: clientIp(req),
   });
   const gateHeaders = quotaHeaders(access.quota);
@@ -462,7 +462,7 @@ export async function POST(req) {
   const research = researchForAsk({
     question,
     target,
-    sessionCookie: req.cookies.get(SESSION_COOKIE)?.value ?? null,
+    sessionCookie: sessionTokenFromRequest(req),
     ip: clientIp(req),
   }).catch((e) => {
     // It is written never to throw. If it does, the answer is unaffected and the

@@ -3,7 +3,7 @@ import { clientIp, isSameOriginRequest, rateLimit } from "@/lib/api-guard.js";
 import { publicResearchAccess, resolveResearchAccess } from "@/lib/research-access.js";
 import { RESEARCH_JOB, startResearch } from "@/lib/research-job.js";
 import { researchConfigured } from "@/lib/research-client.js";
-import { SESSION_COOKIE } from "@/lib/session.js";
+import { sessionTokenFromRequest } from "@/lib/session.js";
 
 /**
  * START A DEEP INVESTIGATION, AND SAY WHAT ONE COSTS.
@@ -60,7 +60,7 @@ export async function GET(req) {
   }
 
   const access = await resolveResearchAccess({
-    sessionCookie: req.cookies.get(SESSION_COOKIE)?.value ?? null,
+    sessionCookie: sessionTokenFromRequest(req),
     ip: clientIp(req),
   });
 
@@ -104,7 +104,7 @@ export async function POST(req) {
 
   const started = await startResearch({
     subject: String(body?.subject ?? ""),
-    sessionCookie: req.cookies.get(SESSION_COOKIE)?.value ?? null,
+    sessionCookie: sessionTokenFromRequest(req),
     ip: clientIp(req),
   });
 

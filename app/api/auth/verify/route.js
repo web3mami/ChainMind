@@ -6,6 +6,7 @@ import {
   createSessionCookie,
   isSessionConfigured,
   PRE_SESSION_COOKIE,
+  preSessionTokenFromRequest,
   readPreSessionCookie,
   shortAddress,
 } from "@/lib/session.js";
@@ -20,8 +21,8 @@ export const maxDuration = 10;
 const RATE_LIMIT = 10;
 const RATE_WINDOW_MS = 60_000;
 
-/** Enough for a 65-byte hex signature and a 42-char address, nothing more. */
-const MAX_BODY_CHARS = 1_000;
+/** Address + signature + optional challengeToken (signed pre-session envelope). */
+const MAX_BODY_CHARS = 4_000;
 
 /**
  * POST { address, signature } — finish a sign-in.
@@ -83,7 +84,9 @@ export async function POST(request) {
     return NextResponse.json({ error: "Sign-in is unavailable right now." }, { status: 503 });
   }
 
-  const pre = readPreSessionCookie(request.cookies.get(PRE_SESSION_COOKIE)?.value);
+  const challengeToken =
+    typeof body?.challengeToken === "string" ? body.challengeToken : null;
+  const pre = readPreSessionCookie(preSessionTokenFromRequest(request, challengeToken));
   let result;
   try {
     result = await verifySignIn({
@@ -105,9 +108,13 @@ export async function POST(request) {
   const session = createSessionCookie(result.address);
   console.info(`[auth] signed in address=${shortAddress(result.address)}`);
 
+  // `token` is the session cookie value — native clients store it in the
+  // Keychain and send `Authorization: Bearer <token>`. Browsers keep using the
+  // Set-Cookie path and ignore the field.
   const res = NextResponse.json({
     address: result.address,
     expiresAt: new Date(session.expiresAt).toISOString(),
+    token: session.value,
   });
   res.cookies.set(session.name, session.value, session.options);
   // The challenge is spent; the pre-session that carried it has no further use

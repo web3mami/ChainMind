@@ -3,7 +3,7 @@ import { clientIp, isSameOriginRequest, rateLimit } from "@/lib/api-guard.js";
 import { publicEntitlement, publicQuota, resolveAccess } from "@/lib/ask-access.js";
 import { gateStatus } from "@/lib/entitlement.js";
 import { quotaMessage } from "@/lib/quota.js";
-import { SESSION_COOKIE } from "@/lib/session.js";
+import { sessionTokenFromRequest } from "@/lib/session.js";
 
 export const runtime = "nodejs";
 export const maxDuration = 10;
@@ -36,7 +36,7 @@ export async function GET(request) {
   }
 
   const access = await resolveAccess({
-    sessionCookie: request.cookies.get(SESSION_COOKIE)?.value ?? null,
+    sessionCookie: sessionTokenFromRequest(request),
     ip: clientIp(request),
     consume: false,
   });

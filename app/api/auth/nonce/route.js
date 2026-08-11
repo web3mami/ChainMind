@@ -122,12 +122,19 @@ export async function POST(request) {
     return NextResponse.json({ error: "Sign-in is unavailable right now." }, { status: 503 });
   }
 
+  // Native clients cannot read httpOnly cookies, so the pre-session value is
+  // also returned in the body as `challengeToken`. They send it back on verify.
+  // Browsers ignore it and keep using the cookie — same bytes either way.
+  const challengeToken =
+    fresh?.value ?? request.cookies.get(PRE_SESSION_COOKIE)?.value ?? null;
+
   const res = NextResponse.json({
     domain,
     chainId,
     nonce: challenge.nonce,
     issuedAt: challenge.issuedAt,
     expiresAt: challenge.expiresAt,
+    ...(challengeToken ? { challengeToken } : {}),
     // Address is filled in by the client from the connected account; the server
     // rebuilds this same string around whichever address is claimed at verify.
     messageTemplate: buildSignInMessage({

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { clientIp, isSameOriginRequest, rateLimit } from "@/lib/api-guard.js";
 import { RESEARCH_JOB, readResearch } from "@/lib/research-job.js";
 import { viewJob, viewReport } from "@/lib/research-view.js";
-import { SESSION_COOKIE } from "@/lib/session.js";
+import { sessionTokenFromRequest } from "@/lib/session.js";
 
 /**
  * POLL ONE INVESTIGATION, AND COLLECT ITS REPORT.
@@ -48,7 +48,7 @@ export async function GET(req, { params }) {
 
   const got = await readResearch({
     id,
-    sessionCookie: req.cookies.get(SESSION_COOKIE)?.value ?? null,
+    sessionCookie: sessionTokenFromRequest(req),
   });
 
   const job = got.job ?? null;

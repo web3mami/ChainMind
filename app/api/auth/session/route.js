@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getChainConfig } from "@/lib/chain.js";
-import { isSessionConfigured, readSessionCookie, SESSION_COOKIE } from "@/lib/session.js";
+import { isSessionConfigured, readSessionCookie, sessionTokenFromRequest } from "@/lib/session.js";
 
 export const runtime = "nodejs";
 export const maxDuration = 10;
@@ -30,7 +30,7 @@ export async function GET(request) {
     );
   }
 
-  const session = readSessionCookie(request.cookies.get(SESSION_COOKIE)?.value);
+  const session = readSessionCookie(sessionTokenFromRequest(request));
   if (!session.ok) {
     return NextResponse.json(
       { authenticated: false, configured: true },
