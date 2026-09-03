@@ -37,6 +37,7 @@ import {
   parseTextToolCalls,
   recoverRefusedToolCalls,
   runToolLoop,
+  withAskedSpan,
 } from "../lib/ask-loop.js";
 
 const ADDRESS = "0x0eb9960654d3661d551a4536d7d425184ec81756";
@@ -555,4 +556,45 @@ test("and the fast path still fires on everything it was built for", async () =>
   assert.equal(fastPathRoute(`what happened here ${TX_HASH}`, "").toolCalls[0].name, "lookup_transaction");
   assert.equal(fastPathRoute("is this legit?", ADDRESS).toolCalls[0].name, "safety_check");
   assert.equal(fastPathRoute("tell me about $tsla", "").toolCalls[0].name, "lookup_token");
+});
+
+/* ---------------------------- an asked-for span ---------------------------- */
+
+test("THE SPAN THE QUESTION NAMED IS HANDED TO THE TOOL, BECAUSE THE MODEL WILL NOT", () => {
+  // MEASURED THREE TIMES LIVE. holder_hold_time takes thresholdDays and answers
+  // "how many have held longer than that" with the count and denominator already
+  // worked out. With the argument in the schema, its use spelled out in the
+  // description, AND a system note naming the number, every run still called it
+  // as {query:"NVDA"} and answered from the median and the range — a different
+  // question wearing a number. The threshold is in the user's sentence and is
+  // parsed deterministically, so routing it through a completion buys nothing.
+  assert.deepEqual(withAskedSpan({ name: "holder_hold_time", args: { query: "NVDA" } }, 3), {
+    query: "NVDA",
+    thresholdDays: 3,
+  });
+});
+
+test("a span the model DID pass wins over the parsed one", () => {
+  // If it read the question differently, that is a reading of the question. This
+  // exists for the case where it read nothing at all.
+  assert.deepEqual(withAskedSpan({ name: "holder_hold_time", args: { query: "NVDA", thresholdDays: 7 } }, 3), {
+    query: "NVDA",
+    thresholdDays: 7,
+  });
+});
+
+test("no span in the question means no argument is invented", () => {
+  assert.deepEqual(withAskedSpan({ name: "holder_hold_time", args: { query: "NVDA" } }, null), { query: "NVDA" });
+});
+
+test("only the tool that understands a span is given one", () => {
+  // token_holders has no thresholdDays; handing it one would be an argument the
+  // schema forbids and the dispatcher would have to reject.
+  assert.deepEqual(withAskedSpan({ name: "token_holders", args: { query: "NVDA" } }, 3), { query: "NVDA" });
+});
+
+test("withAskedSpan is total", () => {
+  for (const bad of [null, undefined, {}, { name: "holder_hold_time" }]) {
+    assert.equal(typeof withAskedSpan(bad, 3), "object");
+  }
 });

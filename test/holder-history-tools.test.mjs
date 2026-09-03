@@ -35,7 +35,7 @@ import {
   toolSubject,
 } from "../lib/ask-tools.js";
 import { bundleCheck, holderHoldTime } from "../lib/token-evidence.js";
-import { DEAD_ADDRESS, ZERO_ADDRESS } from "../lib/holder-history.js";
+import { DEAD_ADDRESS, ZERO_ADDRESS, holdersOverThreshold } from "../lib/holder-history.js";
 import { PHRASE_STEPS, progressLabel, stepForTool } from "../lib/thinking-phrases.js";
 import { SYSTEM_PROMPT } from "../lib/ask-runner.js";
 import { isTable } from "../lib/table-shape.js";
@@ -232,8 +232,8 @@ test("hold time reports a median over real holders and keeps the excluded rows v
   // Five real holders: A, B, C, E measured and D unread. The pool, the burn
   // address and the token contract are labelled out of the statistics.
   assert.equal(e.countedHolders, 5);
-  assert.equal(e.counted, 4);
-  assert.equal(e.unknown, 1);
+  assert.equal(e.holdersWithReadableAge, 4);
+  assert.equal(e.ageUnreadable, 1);
   assert.equal(e.excludedCount, 3);
   assert.deepEqual(
     e.excluded.map((x) => x.role).sort(),
@@ -276,7 +276,7 @@ test("a truncated history reaches the reader as \"at least N days\", never as a 
   const res = await holderHoldTime(TOKEN, withPages);
   assert.equal(res.ok, true);
   const e = res.evidence;
-  assert.equal(e.lowerBounds, 1);
+  assert.equal(e.ageFloorOnly, 1);
   assert.equal(e.isLowerBound, true);
   assert.match(e.medianDisplay, /^at least /, "a bounded median must not be quotable as an exact figure");
   assert.match(e.rangeDisplay, /at least 15.6 days/);
@@ -471,4 +471,79 @@ test("the prompt forbids the claims these two lookups make easy to overstate", (
   assert.match(SYSTEM_PROMPT, /QUOTE THE BUNDLE DENOMINATOR/);
   // The raw-days trap: the prompt must say which field is quotable.
   assert.match(SYSTEM_PROMPT, /medianDaysRaw/);
+});
+
+/* --------------------------- the threshold count --------------------------- */
+
+test("A LOWER BOUND ABOVE THE THRESHOLD IS A DEFINITE YES", () => {
+  // "at least 12 days" against a 3-day mark clears it and would clear it by more,
+  // because the true age is larger than the figure. Counting that as anything but
+  // a yes throws away the one thing the bound does tell us.
+  const r = holdersOverThreshold([{ holdDays: 12, isLowerBound: true }], 0, 3);
+  assert.equal(r.over, 1);
+  assert.equal(r.undetermined, 0);
+  assert.equal(r.under, 0);
+});
+
+test("A LOWER BOUND BELOW THE THRESHOLD IS UNDETERMINED, NEVER A NO", () => {
+  // The inversion this exists to prevent. "at least 2 days" against a 3-day mark
+  // settles nothing: that address's history ran past the page read, so its true
+  // age is larger by an unknown amount and may well clear the mark. Filing it
+  // under "did not qualify" would report holders as short-term on the strength of
+  // us having stopped looking — the same defect as reading an unknown as a zero,
+  // and it fails in the direction that makes a token look worse than it is.
+  const r = holdersOverThreshold([{ holdDays: 2, isLowerBound: true }], 0, 3);
+  assert.equal(r.under, 0, "a floor below the mark is not a holder who failed it");
+  assert.equal(r.undetermined, 1);
+  assert.equal(r.over, 0);
+});
+
+test("an exact figure below the threshold IS a no", () => {
+  const r = holdersOverThreshold([{ holdDays: 2, isLowerBound: false }], 0, 3);
+  assert.equal(r.under, 1);
+  assert.equal(r.undetermined, 0);
+});
+
+test("every count is out of ONE denominator that reconciles", () => {
+  // The reported failure took `exact` (3) against `holdersProbed` (10) and made
+  // the remainder by subtraction — three scopes in one sentence. Every figure here
+  // shares a denominator so no remainder ever has to be reconstructed.
+  const rows = [
+    { holdDays: 39.4, isLowerBound: false },
+    { holdDays: 12, isLowerBound: true },
+    { holdDays: 2, isLowerBound: true },
+    { holdDays: 0.1, isLowerBound: false },
+  ];
+  const r = holdersOverThreshold(rows, 1, 3);
+  assert.equal(r.over + r.under + r.undetermined, r.outOf);
+  assert.equal(r.outOf, 5, "four measured rows plus one unreadable");
+  assert.match(r.reading, /of the 5 holding addresses/);
+});
+
+test("an address with no readable history is undetermined, never a short hold", () => {
+  const r = holdersOverThreshold([], 4, 3);
+  assert.equal(r.undetermined, 4);
+  assert.equal(r.under, 0);
+  assert.equal(r.over, 0);
+  assert.match(r.reading, /unread, not none/);
+});
+
+test("the threshold reading refuses to say anyone held WITHOUT SELLING", () => {
+  // Age since first acquisition is not continuous holding: an address that bought
+  // a month ago, sold out and bought back yesterday still reads as a month. The
+  // reported answer said "held for at least 0.1 to 39.4 days without selling",
+  // which the measurement cannot support in any part.
+  const r = holdersOverThreshold([{ holdDays: 39.4, isLowerBound: false }], 0, 3);
+  assert.doesNotMatch(r.reading, /without selling|never sold|still hold/i);
+  assert.match(r.reading, /counts AGE since a first acquisition/i);
+  assert.match(r.reading, /bought, sold out and bought back/i);
+});
+
+test("an unusable threshold yields no block at all rather than a default", () => {
+  // Defaulting a malformed value would answer a question nobody asked with a
+  // figure that looks measured.
+  for (const bad of [null, undefined, "abc", NaN, -1, {}]) {
+    assert.equal(holdersOverThreshold([{ holdDays: 5, isLowerBound: false }], 0, bad), null, `threshold ${String(bad)}`);
+  }
+  assert.ok(holdersOverThreshold([{ holdDays: 5, isLowerBound: false }], 0, 0), "zero is a usable threshold");
 });

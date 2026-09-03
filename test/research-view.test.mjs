@@ -26,7 +26,7 @@ function report(overrides = {}) {
     schema: "chainmind-research-report/v1",
     jobId: "1f0cabc-2222-4444",
     subject: { given: "https://csl.fun/", kind: "url", anchorHosts: ["csl.fun"], note: "Everything below is anchored to this." },
-    outcome: { status: "concluded", reading: "Concluded after 9 steps.", steps: 9, model: "llama-3.3-70b-versatile" },
+    outcome: { status: "concluded", reading: "Concluded after 9 steps.", steps: 9, model: "openai/gpt-oss-120b" },
     summary: "The site describes a platform for trading skins; the chain records show 58 holders.",
     findings: [
       {

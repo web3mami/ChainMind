@@ -158,7 +158,11 @@ export function readConfig(env = process.env) {
     config: Object.freeze({
       secret,
       port: intFrom(env, "PORT", 8090, { min: 1, max: 65_535 }),
-      model: String(env.GROQ_MODEL ?? "").trim() || "llama-3.3-70b-versatile",
+      // Same default as lib/ask-runner.js, and for the same reason: Groq removed
+      // llama-3.3-70b-versatile on or before 3 September 2026 and every call to it
+      // is a 404. Kept as a literal here rather than imported because this service
+      // deploys on its own and must not pull the web app's module graph.
+      model: String(env.GROQ_MODEL ?? "").trim() || "openai/gpt-oss-120b",
       /**
        * WHETHER THE BROWSER LEG EXISTS AT ALL, as a fact this service can state rather
        * than a failure it discovers. A deployment with no render service can still do

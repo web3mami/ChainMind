@@ -196,7 +196,7 @@ function fixture({ findings = [], summary = null, renderAvailable = true, ledger
       budget: b,
       summary,
       outcome: { status: "concluded", steps: 3, modelCalls: 3, promptTokens: 100, completionTokens: 20 },
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
       startedAt: 1_700_000_000_000,
       finishedAt: 1_700_000_060_000,
       renderAvailable,

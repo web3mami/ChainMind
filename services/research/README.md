@@ -145,7 +145,7 @@ Unauthenticated and leaks nothing — no secret, no subjects, no targets.
 
 ```json
 { "ok": true, "service": "chainmind-research", "queued": 0, "workers": 1, "active": 0,
-  "model": "llama-3.3-70b-versatile", "renderAvailable": true,
+  "model": "openai/gpt-oss-120b", "renderAvailable": true,
   "githubToken": "configured", "uptimeMs": 20848, "node": "v22.17.0" }
 ```
 
@@ -408,7 +408,7 @@ Set these on the **research** service:
 | `RENDER_SERVICE_URL` | no | — | the render service, e.g. `http://render.railway.internal:8080` (private) or its public domain |
 | `RENDER_SHARED_SECRET` | no | — | **the render service's** secret — a different value from `RESEARCH_SHARED_SECRET` |
 | `RESEARCH_GITHUB_TOKEN` | no | — | a **read-only, public-scope** GitHub token. `Settings → Developer settings → Personal access tokens → Fine-grained → Public repositories (read-only)`, no account permissions, no repository permissions |
-| `GROQ_MODEL` | no | `llama-3.3-70b-versatile` | |
+| `GROQ_MODEL` | no | `openai/gpt-oss-120b` | |
 | `PORT` | no | `8090` | Railway sets this itself |
 | `RESEARCH_WORKERS` | no | `1` | concurrent investigations in this process. Raise memory with it |
 | `RESEARCH_MAX_QUEUED` | no | `24` | over it, `503 at_capacity` |

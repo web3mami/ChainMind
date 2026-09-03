@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getChainConfig, getPublicClient } from "@/lib/chain.js";
 import { gateStatus } from "@/lib/entitlement.js";
+import { DEFAULT_MODEL, resolveModel } from "@/lib/ask-runner.js";
 import { freeDailyAllowance } from "@/lib/quota.js";
 import { researchAllowance, RESEARCH_TIER } from "@/lib/research-access.js";
 import { researchServiceStatus } from "@/lib/research-client.js";
@@ -50,6 +51,26 @@ function statefulFeatures() {
     // who already knows that; `enforced: false` means it to everyone. A quota
     // that looks enforced while counting per instance is worse than no quota,
     // because nobody goes looking for it.
+    // THE OTHER THING THAT FAILS WITHOUT ANYONE NOTICING. A model that stops
+    // being served answers 404, the tool loop throws, and lib/ask-runner.js
+    // degrades to keyword routing — by design, because degrading beats failing.
+    // But that degradation is invisible from outside: the site keeps answering,
+    // just worse, and the only trace is one console.warn per request. Groq
+    // decommissioned llama-3.1-8b-instant on 16 August 2026, so this is a real
+    // way to end up serving a downgraded product for weeks. Naming the model in
+    // force is what makes it a thirty-second diagnosis instead of a mystery.
+    model: {
+      configured: Boolean(process.env.GROQ_API_KEY),
+      name: resolveModel(),
+      overridden: resolveModel() !== DEFAULT_MODEL,
+      ...(process.env.GROQ_API_KEY
+        ? {}
+        : {
+            hint:
+              "GROQ_API_KEY is not set, so every question is answered by the keyword router rather than the model. " +
+              "The site still works and still reads the chain; the answers are the narrower ones it gave before the model existed.",
+          }),
+    },
     quota: {
       enforced: store.enforced,
       freeDaily: freeDailyAllowance(),
